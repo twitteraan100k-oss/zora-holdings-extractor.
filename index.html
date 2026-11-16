@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#10131b">
+<title>Zora Holdings Extractor</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0e14;--panel:#151a24;--line:#293244;--muted:#9aa6ba;--white:#f4f6fb;--accent:#a78bfa;--good:#65d6a2;--bad:#ff8585}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -20%,#282342 0,#0b0e14 55%);color:var(--white);font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:760px;margin:auto;padding:25px 15px 48px}.brand{display:flex;align-items:center;gap:11px;margin-bottom:20px}.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#a78bfa,#6d5ce7);display:grid;place-items:center;font-weight:900;color:#100e1a;font-size:19px}.eyebrow{font-size:11px;letter-spacing:.16em;color:var(--accent);font-weight:800}.brand h1{font-size:20px;margin:2px 0 0}.intro{color:var(--muted);line-height:1.55}.panel{background:rgba(21,26,36,.95);border:1px solid var(--line);border-radius:19px;padding:17px;margin:14px 0}label{display:block;font-size:13px;font-weight:700;margin:12px 0 8px}input{width:100%;background:#0c111a;border:1px solid #354057;color:white;border-radius:12px;padding:14px 12px;font-size:14px;outline:none}input:focus{border-color:var(--accent)}button{border:0;border-radius:12px;padding:13px 15px;font-weight:800;font-size:13px;cursor:pointer}button:disabled{opacity:.45}.primary{width:100%;margin-top:14px;background:var(--accent);color:#171126}.secondary{background:#252d3d;color:white;border:1px solid #3a465c}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.actions button{flex:1;min-width:115px}.hint,.foot{font-size:12px;color:var(--muted);line-height:1.55}.status{font-size:13px;color:var(--muted);margin-top:12px;line-height:1.5;min-height:20px}.status.error{color:var(--bad)}.status.ok{color:var(--good)}.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:#0e1420;border:1px solid var(--line);border-radius:14px;padding:13px}.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.stat strong{display:block;font-size:24px;margin-top:4px}.token{border-top:1px solid var(--line);padding:13px 0;display:flex;align-items:center;justify-content:space-between;gap:10px}.token-info{min-width:0;overflow-wrap:anywhere}.token-name{font-weight:750}.token-sub{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.copy-one{padding:8px 10px;flex-shrink:0}.empty{text-align:center;color:var(--muted);padding:24px 8px}a{color:#c4b5fd}
+</style></head><body><main>
+<div class="brand"><div class="logo">Z</div><div><div class="eyebrow">ZORA · HOLDINGS</div><h1>Zora Holdings Extractor</h1></div></div>
+<p class="intro">Ambil daftar coin yang sedang dimiliki sebuah wallet Zora, lalu salin seluruh contract address sekaligus. Ini bukan pencarian token deployer.</p>
+<section class="panel">
+<label for="wallet">Wallet pembeli / holder</label>
+<input id="wallet" value="0xd972baa9e4487e811e46a98f263a76e0a3308cfd" autocapitalize="off" spellcheck="false">
+<label for="key">Zora API key</label>
+<input id="key" placeholder="Tempel API key Zora di sini" autocapitalize="off" spellcheck="false">
+<p class="hint">Buat API key melalui <a href="https://zora.co/settings/developer" target="_blank" rel="noopener">Zora Developer Settings</a>. Key hanya disimpan sementara di memori halaman ini dan dikirim ke API resmi Zora; tidak disimpan ke file.</p>
+<button class="primary" id="scan">SCAN HOLDINGS</button>
+<div class="status" id="status" aria-live="polite">Siap. Tidak perlu connect wallet atau tanda tangan transaksi.</div>
+</section>
+<section class="panel" id="results" hidden>
+<div class="stats"><div class="stat"><span>Coin balances</span><strong id="count">0</strong></div><div class="stat"><span>Pages scanned</span><strong id="pages">0</strong></div></div>
+<div class="actions"><button class="secondary" id="copyCA">COPY ALL CA</button><button class="secondary" id="copyReport">COPY REPORT</button><button class="secondary" id="export">EXPORT TXT</button></div>
+<div id="list"></div>
+</section>
+<p class="foot">Endpoint resmi: <code>/profileBalances</code>. Mengikuti cursor pagination sampai selesai. Hasil mengikuti data yang diindeks Zora dan saldo yang dilaporkan API; angka holdings di aplikasi dapat memakai definisi atau filter tampilan yang berbeda. Pastikan API key tidak dibagikan kepada orang lain.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);let coins=[],holder='',pages=0;
+const valid=s=>/^0x[a-fA-F0-9]{40}$/.test(s);const status=(m,c='')=>{$('status').textContent=m;$('status').className='status '+c};
+async function fetchPage(address,key,cursor){
+ const u=new URL('https://api-sdk.zora.engineering/profileBalances');
+ u.searchParams.set('identifier',address);u.searchParams.set('count','100');if(cursor)u.searchParams.set('after',cursor);
+ const r=await fetch(u,{headers:{'accept':'application/json','api-key':key}});
+ const body=await r.text();let j;try{j=JSON.parse(body)}catch(e){throw new Error('Respons API bukan JSON (HTTP '+r.status+').')}
+ if(!r.ok)throw new Error('Zora API HTTP '+r.status+': '+(j.message||j.error||body.slice(0,180)));
+ return j;
+}
+function extract(j){
+ const p=j?.data?.profile||j?.profile||j?.data||j;
+ const c=p?.coinBalances||j?.coinBalances;
+ if(!c)throw new Error('Respons tidak memiliki profile.coinBalances. Struktur API mungkin berubah.');
+ return c;
+}
+async function scan(){
+ const address=$('wallet').value.trim(),key=$('key').value.trim();
+ if(!valid(address)){status('Alamat wallet tidak valid.','error');return}
+ if(!key){status('Masukkan Zora API key.','error');return}
+ $('scan').disabled=true;$('results').hidden=true;coins=[];holder=address;pages=0;
+ try{
+  let cursor=null;const seen=new Set();
+  do{
+   pages++;status('Mengambil halaman '+pages+' dari Zora…');
+   const j=await fetchPage(address,key,cursor);const c=extract(j);const edges=c.edges||[];
+   for(const edge of edges){
+    const n=edge?.node||edge;const t=n?.token||n?.coin||n?.zora20Token||{};
+    const ca=t.address||t.contractAddress||t.collectionAddress||n.address;
+    if(!valid(ca||''))continue;
+    const chain=Number(t.chainId||t.chain?.id||n.chainId||8453);
+    const raw=n.amount?.amountRaw??n.amountRaw??n.balanceRaw??'';
+    const dec=n.amount?.amountDecimal??n.amountDecimal??n.balanceDecimal??'';
+    const keyCA=ca.toLowerCase()+'-'+chain;
+    if(seen.has(keyCA))continue;seen.add(keyCA);
+    coins.push({address:ca,name:t.name||n.name||'Unnamed coin',symbol:t.symbol||n.symbol||'',chain,raw:String(raw),decimal:String(dec),valueUsd:n.valueUsd??''});
+   }
+   const info=c.pageInfo||{};cursor=info.hasNextPage?info.endCursor:null;
+   if(!cursor||edges.length===0)break;
+   if(pages>=200)throw new Error('Dihentikan setelah 200 halaman sebagai pengaman.');
+  }while(true);
+  render();$('results').hidden=false;$('count').textContent=coins.length;$('pages').textContent=pages;
+  const base=coins.filter(x=>x.chain===8453).length;
+  status(`Selesai: ${coins.length} coin balance unik; ${base} di Base. Periksa hasil dan jumlah saldo.`,'ok');
+ }catch(e){status('Gagal: '+e.message,'error')}
+ finally{$('scan').disabled=false}
+}
+function render(){
+ const list=$('list');list.innerHTML='';if(!coins.length){list.innerHTML='<div class="empty">API tidak mengembalikan coin balance untuk wallet ini.</div>';return}
+ coins.forEach((x,i)=>{const row=document.createElement('div');row.className='token';const info=document.createElement('div');info.className='token-info';const name=document.createElement('div');name.className='token-name';name.textContent=`${i+1}. ${x.name}${x.symbol?' · $'+x.symbol:''}`;const ca=document.createElement('div');ca.className='token-sub';ca.textContent=x.address;const meta=document.createElement('div');meta.className='token-sub';meta.textContent=`Chain ${x.chain}${x.decimal?` · Balance ${x.decimal}`:''}`;info.append(name,ca,meta);const b=document.createElement('button');b.className='secondary copy-one';b.textContent='COPY CA';b.onclick=()=>copy(x.address,b);row.append(info,b);list.append(row)})
+}
+async function copy(s,b){try{await navigator.clipboard.writeText(s);if(b){const old=b.textContent;b.textContent='COPIED';setTimeout(()=>b.textContent=old,1200)}else status('Berhasil disalin.','ok')}catch(e){status('Clipboard tidak diizinkan. Buka di Safari atau gunakan Export TXT.','error')}}
+const caText=()=>coins.map(x=>x.address).join('\n');
+const report=()=>`Holder: ${holder}\nTotal unique coin balances: ${coins.length}\n\n`+coins.map((x,i)=>`${i+1}. ${x.name}${x.symbol?' ($'+x.symbol+')':''}\nCA: ${x.address}\nChain ID: ${x.chain}\nBalance: ${x.decimal||x.raw}`).join('\n\n');
+$('scan').onclick=scan;$('copyCA').onclick=()=>copy(caText());$('copyReport').onclick=()=>copy(report());
+$('export').onclick=()=>{const blob=new Blob([report()],{type:'text/plain;charset=utf-8'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='zora-holdings-'+holder.slice(2,8)+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
+</script></body></html>
